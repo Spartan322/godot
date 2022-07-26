@@ -2333,7 +2333,7 @@ void Control::remove_theme_constant_override(const StringName &p_name) {
 }
 
 void Control::set_focus_mode(FocusMode p_focus_mode) {
-	ERR_FAIL_INDEX((int)p_focus_mode, 3);
+	ERR_FAIL_INDEX((int)p_focus_mode, 4);
 
 	if (is_inside_tree() && p_focus_mode == FOCUS_NONE && data.focus_mode != FOCUS_NONE && has_focus()) {
 		release_focus();
@@ -2383,7 +2383,7 @@ Control *Control::find_next_valid_focus() const {
 			} else {
 				return nullptr;
 			}
-			if (c->is_visible() && c->get_focus_mode() != FOCUS_NONE) {
+			if (c->is_visible() && (c->get_focus_mode() != FOCUS_NONE && c->get_focus_mode() != FOCUS_SELF_CONTAINED)) {
 				return c;
 			}
 		}
@@ -2473,7 +2473,7 @@ Control *Control::find_prev_valid_focus() const {
 			} else {
 				return nullptr;
 			}
-			if (c->is_visible() && c->get_focus_mode() != FOCUS_NONE) {
+			if (c->is_visible() && (c->get_focus_mode() != FOCUS_NONE && c->get_focus_mode() != FOCUS_SELF_CONTAINED)) {
 				return c;
 			}
 		}
@@ -2742,7 +2742,7 @@ Control *Control::_get_focus_neighbor(Side p_side, int p_count) {
 		if (!c->is_visible()) {
 			valid = false;
 		}
-		if (c->get_focus_mode() == FOCUS_NONE) {
+		if (c->get_focus_mode() == FOCUS_NONE || c->get_focus_mode() == FOCUS_SELF_CONTAINED) {
 			valid = false;
 		}
 		if (valid) {
@@ -3364,6 +3364,7 @@ void Control::_bind_methods() {
 	BIND_ENUM_CONSTANT(FOCUS_NONE);
 	BIND_ENUM_CONSTANT(FOCUS_CLICK);
 	BIND_ENUM_CONSTANT(FOCUS_ALL);
+	BIND_ENUM_CONSTANT(FOCUS_SELF_CONTAINED);
 
 	BIND_CONSTANT(NOTIFICATION_RESIZED);
 	BIND_CONSTANT(NOTIFICATION_MOUSE_ENTER);
