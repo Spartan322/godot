@@ -1076,6 +1076,9 @@ void GDScriptAnalyzer::resolve_node(GDScriptParser::Node *p_node) {
 		case GDScriptParser::Node::PARAMETER:
 			resolve_parameter(static_cast<GDScriptParser::ParameterNode *>(p_node));
 			break;
+		case GDScriptParser::Node::VARADIC_PARAMETER:
+			resolve_varadic_parameter(static_cast<GDScriptParser::VaradicParameterNode *>(p_node));
+			break
 		case GDScriptParser::Node::PATTERN:
 			resolve_match_pattern(static_cast<GDScriptParser::PatternNode *>(p_node), nullptr);
 			break;

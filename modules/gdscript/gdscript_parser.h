@@ -273,6 +273,7 @@ public:
 			MATCH,
 			MATCH_BRANCH,
 			PARAMETER,
+			VARADIC_PARAMETER,
 			PASS,
 			PATTERN,
 			PRELOAD,
@@ -746,6 +747,7 @@ public:
 		IdentifierNode *identifier = nullptr;
 		Vector<ParameterNode *> parameters;
 		HashMap<StringName, int> parameters_indices;
+		VaradicParameterNode *varadic_parameter = nullptr;
 		TypeNode *return_type = nullptr;
 		SuiteNode *body = nullptr;
 		bool is_static = false;
@@ -870,6 +872,14 @@ public:
 
 		ParameterNode() {
 			type = PARAMETER;
+		}
+	};
+
+	struct VaradicParameterNode : public Node {
+		IdentifierNode *identifier = nullptr;
+
+		VariadicParameterNode() {
+			type = VARADIC_PARAMETER;
 		}
 	};
 
@@ -1355,6 +1365,7 @@ private:
 	SignalNode *parse_signal();
 	EnumNode *parse_enum();
 	ParameterNode *parse_parameter();
+	VaradicParameterNode *parse_varadic_parameter();
 	FunctionNode *parse_function();
 	void parse_function_signature(FunctionNode *p_function, SuiteNode *p_body, const String &p_type);
 	SuiteNode *parse_suite(const String &p_context, SuiteNode *p_suite = nullptr, bool p_for_lambda = false);
@@ -1487,6 +1498,7 @@ public:
 		void print_match_branch(MatchBranchNode *p_match_branch);
 		void print_match_pattern(PatternNode *p_match_pattern);
 		void print_parameter(ParameterNode *p_parameter);
+		void print_varadic_parameter(VaradicParameterNode *p_varadic_parameter);
 		void print_preload(PreloadNode *p_preload);
 		void print_return(ReturnNode *p_return);
 		void print_self(SelfNode *p_self);

@@ -2014,6 +2014,12 @@ GDScriptFunction *GDScriptCompiler::_parse_function(Error &r_error, GDScript *p_
 				optional_parameters++;
 			}
 		}
+		if(p_func->varadic_parameters) {
+			const GDScriptParser::VaradicParameterNode *varadic_parameter = p_func->varadic_parameter;
+			GDScriptDataType par_type = _gdtype_from_datatype(varadic_parameter->get_datatype(), p_script);
+			uint32_t par_addr = codegen.generator->add_parameter(varadic_parameter->identifier->name, true, par_type);
+			codegen.parameters[parameter->identifier->name] = GDScriptCodeGenerator::Address(GDScriptCodeGenerator::Address::FUNCTION_PARAMETER, par_addr, par_type);
+		}
 	}
 
 	// Parse initializer if applies.

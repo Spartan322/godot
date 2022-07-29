@@ -1174,6 +1174,22 @@ GDScriptParser::ParameterNode *GDScriptParser::parse_parameter() {
 	return parameter;
 }
 
+GDScriptParser::VaradicParameterNode *GDScriptParser::parse_varadic_parameter() {
+	if (!consume(GDScriptTokenizer::Token::PERIOD_PERIOD_PERIOD, R"(Expected '...' after ','.)")) {
+		return nullptr;
+	}
+
+	if (!consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected parameter name.)")) {
+		return nullptr;
+	}
+
+	VaradicParameterNode *varadic_parameter = alloc_node<VaradicParameterNode>();
+	varadic_parameter->identifier = parse_identifier();
+
+	complete_extents(varadic_parameter);
+	return varadic_parameter
+}
+
 GDScriptParser::SignalNode *GDScriptParser::parse_signal() {
 	SignalNode *signal = alloc_node<SignalNode>();
 
@@ -1334,10 +1350,29 @@ GDScriptParser::EnumNode *GDScriptParser::parse_enum() {
 void GDScriptParser::parse_function_signature(FunctionNode *p_function, SuiteNode *p_body, const String &p_type) {
 	if (!check(GDScriptTokenizer::Token::PARENTHESIS_CLOSE) && !is_at_end()) {
 		bool default_used = false;
+		bool varadic_used = false;
 		do {
 			if (check(GDScriptTokenizer::Token::PARENTHESIS_CLOSE)) {
 				// Allow for trailing comma.
 				break;
+			}
+			if(variadic_used) {
+				push_error("Cannot have a parameter after a varadic parameter.");
+				continue;
+			}
+			if(check(GDScriptTokenizer::Token::PERIOD_PERIOD_PERIOD)) {
+				VaradicParameterNode *varadic_parameter = parse_varadic_parameter();
+				if (varadic_parameter == nullptr) {
+					break;
+				}
+				varadic_used = true;
+				if (p_function->parameters_indices.has(parameter->identifier->name)) {
+					push_error(vformat(R"(Parameter with name "%s" was already declared for this %s.)", parameter->identifier->name, p_type));
+				} else {
+					p_function->parameters_indices[varadic_parameter->identifier->name] = p_function->parameters.size() + 1;
+					p_function->varadic_parameter = varadic_parameter;
+					p_body->add_local(varadic_parameter, current_function);
+				}
 			}
 			ParameterNode *parameter = parse_parameter();
 			if (parameter == nullptr) {
@@ -1359,6 +1394,7 @@ void GDScriptParser::parse_function_signature(FunctionNode *p_function, SuiteNod
 				p_body->add_local(parameter, current_function);
 			}
 		} while (match(GDScriptTokenizer::Token::COMMA));
+		
 	}
 
 	pop_multiline();
@@ -4527,6 +4563,9 @@ void GDScriptParser::TreePrinter::print_function(FunctionNode *p_function, const
 		}
 		print_parameter(p_function->parameters[i]);
 	}
+	if(p_function->varadic_parameter) {
+		print_varadic_parameter(p_function->varadic_parameter);
+	}
 	push_line(" ) :");
 	increase_indent();
 	print_suite(p_function->body);
@@ -4693,6 +4732,10 @@ void GDScriptParser::TreePrinter::print_parameter(ParameterNode *p_parameter) {
 		push_text(" = ");
 		print_expression(p_parameter->default_value);
 	}
+}
+
+void GDScriptParser::TreePrinter::print_varadic_parameter(VaradicParameterNode *p_varadic_parameter) {
+	print_identifier(p_parameter->identifier);
 }
 
 void GDScriptParser::TreePrinter::print_preload(PreloadNode *p_preload) {
