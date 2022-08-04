@@ -357,6 +357,31 @@ public:
 		LOOKUP_RESULT_MAX
 	};
 
+	struct SymbolHint {
+		enum Type {
+			SYMBOL_UNKNOWN,
+			SYMBOL_CLASS,
+			SYMBOL_METHOD,
+			SYMBOL_SIGNAL,
+			SYMBOL_PROPERTY,
+			SYMBOL_CONSTANT,
+			SYMBOL_LOCAL_VAR,
+			SYMBOL_ENUM,
+		};
+		struct Parameter {
+			String name;
+			String datatype;
+			Variant default_value;
+		};
+		Type type = SYMBOL_UNKNOWN;
+		String _namespace;
+		String datatype;
+		String symbol;
+		Variant value;
+		Vector<Parameter> parameters;
+		String description;
+	};
+
 	struct LookupResult {
 		LookupResultType type;
 		Ref<Script> script;
@@ -364,6 +389,7 @@ public:
 		String class_member;
 		String class_path;
 		int location;
+		SymbolHint hint;
 	};
 
 	virtual Error lookup_code(const String &p_code, const String &p_symbol, const String &p_path, Object *p_owner, LookupResult &r_result) { return ERR_UNAVAILABLE; }
