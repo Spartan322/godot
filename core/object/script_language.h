@@ -369,6 +369,7 @@ public:
 			SYMBOL_CONSTANT,
 			SYMBOL_LOCAL_VAR,
 			SYMBOL_ENUM,
+			SYMBOL_ANNOTATION,
 		};
 		struct Parameter {
 			String name;
