@@ -3770,6 +3770,45 @@ String TextEdit::get_word_at_pos(const Vector2 &p_pos) const {
 	return String();
 }
 
+Point2i TextEdit::get_word_line_column_at_pos(const Vector2 &p_pos) const {
+	Point2i pos = get_line_column_at_pos(p_pos);
+	int row = pos.y;
+	int col = pos.x;
+
+	String s = text[row];
+	if (s.length() == 0) {
+		return Point2i(-1, -1);
+	}
+	int beg, end;
+	if (select_word(s, col, beg, end)) {
+		bool inside_quotes = false;
+		char32_t selected_quote = '\0';
+		int qbegin = 0, qend = 0;
+		for (int i = 0; i < s.length(); i++) {
+			if (s[i] == '"' || s[i] == '\'') {
+				if (i == 0 || s[i - 1] != '\\') {
+					if (inside_quotes && selected_quote == s[i]) {
+						qend = i;
+						inside_quotes = false;
+						selected_quote = '\0';
+						if (col >= qbegin && col <= qend) {
+							return Point2i(qbegin + 1, row);
+						}
+					} else if (!inside_quotes) {
+						qbegin = i + 1;
+						inside_quotes = true;
+						selected_quote = s[i];
+					}
+				}
+			}
+		}
+
+		return Point2i(beg + 1, row);
+	}
+
+	return Point2i(-1, -1);
+}
+
 Point2i TextEdit::get_line_column_at_pos(const Point2i &p_pos, bool p_allow_out_of_bounds) const {
 	float rows = p_pos.y;
 	rows -= style_normal->get_margin(SIDE_TOP);
@@ -5175,6 +5214,8 @@ void TextEdit::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_local_mouse_pos"), &TextEdit::get_local_mouse_pos);
 
 	ClassDB::bind_method(D_METHOD("get_word_at_pos", "position"), &TextEdit::get_word_at_pos);
+
+	ClassDB::bind_method(D_METHOD("get_word_line_column_at_pos", "position"), &TextEdit::get_word_line_column_at_pos);
 
 	ClassDB::bind_method(D_METHOD("get_line_column_at_pos", "position", "allow_out_of_bounds"), &TextEdit::get_line_column_at_pos, DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("get_pos_at_line_column", "line", "column"), &TextEdit::get_pos_at_line_column);

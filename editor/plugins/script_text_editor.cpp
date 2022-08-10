@@ -108,6 +108,346 @@ ConnectionInfoDialog::ConnectionInfoDialog() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void SymbolHintHelpBit::_go_to_help(String p_what) {
+	EditorNode::get_singleton()->set_visible_editor(EditorNode::EDITOR_SCRIPT);
+	ScriptEditor::get_singleton()->goto_help(p_what);
+	emit_signal(SNAME("request_hide"));
+}
+
+void SymbolHintHelpBit::_meta_clicked(String p_select) {
+	if (p_select.begins_with("$")) { //enum
+
+		String select = p_select.substr(1, p_select.length());
+		String class_name;
+		if (select.contains(".")) {
+			class_name = select.get_slice(".", 0);
+		} else {
+			class_name = "@Global";
+		}
+		_go_to_help("class_enum:" + class_name + ":" + select);
+		return;
+	} else if (p_select.begins_with("#")) {
+		_go_to_help("class_name:" + p_select.substr(1, p_select.length()));
+		return;
+	} else if (p_select.begins_with("@")) {
+		String m = p_select.substr(1, p_select.length());
+
+		if (m.contains(".")) {
+			_go_to_help("class_method:" + m.get_slice(".", 0) + ":" + m.get_slice(".", 0)); // Must go somewhere else.
+		}
+	}
+}
+
+void SymbolHintHelpBit::_bind_methods() {
+	ADD_SIGNAL(MethodInfo("request_hide"));
+
+	// ClassDB::bind_method(D_METHOD("_deferred_update"), &SymbolHintHelpBit::_deferred_update);
+}
+
+void SymbolHintHelpBit::_notification(int p_what) {
+	switch (p_what) {
+		case NOTIFICATION_ENTER_TREE:
+		case NOTIFICATION_THEME_CHANGED: {
+			rich_text->add_theme_color_override("selection_color", get_theme_color(SNAME("selection_color")));
+			set_symbol_hint(symbol_hint);
+		} break;
+		case NOTIFICATION_MOUSE_EXIT:
+			// Force popup to disappear when the mouse exists
+			get_parent()->emit_signal(SNAME("mouse_exited"));
+		break;
+	}
+}
+
+void SymbolHintHelpBit::_push_text(const String &p_text, bool p_pop) {
+	rich_text->add_text(p_text);
+	text_active_line_width += p_text.size();
+	current_line += p_text;
+	if (p_pop) {
+		rich_text->pop();
+	}
+	if (longest_line.is_empty()) {
+		longest_line = current_line;
+	}
+}
+
+void SymbolHintHelpBit::_push_newline() {
+	rich_text->add_newline();
+	text_active_line++;
+	if (current_line.size() > longest_line.size()) {
+		longest_line.clear();
+		longest_line = current_line;	
+	}
+	current_line = String();
+}
+
+void SymbolHintHelpBit::_reset() {
+	text_active_line_width = 0;
+	text_active_line = 1;
+	text_max_active_line_width = 0;
+	longest_line.clear();
+	current_line.clear();
+	rich_text->clear();
+}
+
+void SymbolHintHelpBit::set_symbol_hint(const ScriptLanguage::SymbolHint &p_symbol_hint) {
+	RichTextLabel *label = get_rich_text();
+
+	symbol_hint = p_symbol_hint;
+
+	if (p_symbol_hint.type == ScriptLanguage::SymbolHint::SYMBOL_UNKNOWN) {
+		return;
+	}
+
+	// set_block_minimum_size_adjust(true);
+	Color hint_color_type = EDITOR_GET("text_editor/hints/hover/symbol_type_color");
+	Color hint_color_class = EDITOR_GET("text_editor/hints/hover/symbol_color");
+	Color hint_color_symbol = EDITOR_GET("text_editor/hints/hover/value_color");
+	int hint_max_line_size = 80;
+
+	_reset();
+	switch (p_symbol_hint.type) {
+		case ScriptLanguage::SymbolHint::SYMBOL_CLASS:
+			label->push_color(hint_color_type);
+			_push_text("class");
+			_push_text(" ", false);
+			if (!p_symbol_hint._namespace.is_empty()) {
+				label->push_color(hint_color_class);
+				_push_text(p_symbol_hint._namespace);
+			    _push_text("::", false);
+			}
+			label->push_color(hint_color_class);
+			_push_text(p_symbol_hint.symbol);
+			break;
+		case ScriptLanguage::SymbolHint::SYMBOL_METHOD:
+		case ScriptLanguage::SymbolHint::SYMBOL_SIGNAL: {
+			bool is_method = p_symbol_hint.type == ScriptLanguage::SymbolHint::SYMBOL_METHOD;
+			label->push_color(hint_color_type);
+			_push_text(is_method ? "method" : "signal");
+		    _push_text(" ", false);
+			if (!p_symbol_hint._namespace.is_empty()) {
+				label->push_color(hint_color_class);
+				_push_text(p_symbol_hint._namespace);
+			    _push_text("::", false);
+			}
+			label->push_color(hint_color_class);
+			_push_text(p_symbol_hint.symbol);
+		    _push_text("(", false);
+			for (int i = 0; i < p_symbol_hint.parameters.size(); i++) {
+				if (i != 0) {
+				    _push_text(",", false);
+				}
+				if (text_active_line_width + p_symbol_hint.parameters[i].name.size() + 1 > hint_max_line_size) {
+					_push_newline();
+					text_max_active_line_width = text_active_line_width;
+					text_active_line_width = 0;
+				} else {
+				    _push_text(" ", false);
+				}
+				_push_text(p_symbol_hint.parameters[i].name, false);
+				if (!p_symbol_hint.parameters[i].datatype.is_empty()) {
+				    _push_text(":", false);
+					label->push_color(hint_color_class);
+					_push_text(p_symbol_hint.parameters[i].datatype);
+				}
+				if (p_symbol_hint.parameters[i].default_value.get_type() != Variant::NIL) {
+				    _push_text(" = ", false);
+					label->push_color(hint_color_symbol);
+					_push_text(p_symbol_hint.parameters[i].default_value.stringify());
+				}
+			}
+		    _push_text(")", false);
+			if (is_method && !p_symbol_hint.datatype.is_empty()) {
+			    _push_text(" -> ", false);
+				label->push_color(hint_color_class);
+				_push_text(p_symbol_hint.datatype);
+			}
+		} break;
+		case ScriptLanguage::SymbolHint::SYMBOL_PROPERTY:
+			label->push_color(hint_color_type);
+			_push_text("property");
+		    _push_text(" ", false);
+			if (!p_symbol_hint._namespace.is_empty()) {
+				label->push_color(hint_color_class);
+				_push_text(p_symbol_hint._namespace);
+			    _push_text("::", false);
+			}
+			label->push_color(hint_color_class);
+			_push_text(p_symbol_hint.symbol);
+			if (!p_symbol_hint.datatype.is_empty()) {
+			    _push_text(":", false);
+				label->push_color(hint_color_class);
+				_push_text(p_symbol_hint.datatype);
+			}
+			break;
+		case ScriptLanguage::SymbolHint::SYMBOL_CONSTANT: {
+			label->push_color(hint_color_type);
+			_push_text("constant");
+		    _push_text(" ", false);
+			if (!p_symbol_hint._namespace.is_empty()) {
+				label->push_color(hint_color_class);
+				_push_text(p_symbol_hint._namespace);
+			    _push_text("::", false);
+			}
+			label->push_color(hint_color_class);
+			_push_text(p_symbol_hint.symbol);
+		    _push_text(" = ", false);
+			label->push_color(hint_color_symbol);
+			_push_text(p_symbol_hint.value.stringify());
+		} break;
+		case ScriptLanguage::SymbolHint::SYMBOL_LOCAL_VAR:
+			label->push_color(hint_color_type);
+			_push_text("local var");
+		    _push_text(" ", false);
+			if (!p_symbol_hint._namespace.is_empty()) {
+				label->push_color(hint_color_class);
+				_push_text(p_symbol_hint._namespace);
+			    _push_text(" ", false);
+			}
+			label->push_color(hint_color_class);
+			_push_text(p_symbol_hint.symbol);
+			if (!p_symbol_hint.datatype.is_empty()) {
+			    _push_text(" : ", false);
+				label->push_color(hint_color_class);
+				_push_text(p_symbol_hint.datatype);
+			}
+			break;
+		case ScriptLanguage::SymbolHint::SYMBOL_ANNOTATION:
+			label->push_color(hint_color_type);
+			_push_text("annotation");
+		    _push_text(" ", false);
+			label->push_color(hint_color_class);
+			_push_text(p_symbol_hint.symbol);
+			_push_text("(", false);
+			for (int i = 0; i < p_symbol_hint.parameters.size(); i++) {
+				if (i != 0) {
+				    _push_text(",", false);
+				}
+				if (text_active_line_width + p_symbol_hint.parameters[i].name.size() + 1 > hint_max_line_size) {
+					_push_newline();
+					text_max_active_line_width = text_active_line_width;
+					text_active_line_width = 0;
+				} else {
+				    _push_text(" ", false);
+				}
+				_push_text(p_symbol_hint.parameters[i].name, false);
+				if (!p_symbol_hint.parameters[i].datatype.is_empty()) {
+				    _push_text(":", false);
+					label->push_color(hint_color_class);
+					_push_text(p_symbol_hint.parameters[i].datatype);
+				}
+			}
+		    _push_text(")", false);
+			break;
+		case ScriptLanguage::SymbolHint::SYMBOL_ENUM:
+			label->push_color(hint_color_type);
+			_push_text("enum");
+		    _push_text(" ", false);
+			if (!p_symbol_hint._namespace.is_empty()) {
+				label->push_color(hint_color_class);
+				_push_text(p_symbol_hint._namespace);
+			    _push_text("::", false);
+			}
+			label->push_color(hint_color_class);
+			_push_text(p_symbol_hint.symbol);
+		    _push_text(" = ", false);
+			label->push_color(hint_color_symbol);
+			_push_text(p_symbol_hint.value.stringify());
+			break;
+		default:
+			symbol_hint.type = ScriptLanguage::SymbolHint::SYMBOL_UNKNOWN;
+			return;
+	}
+
+	// int label_width = label->get_content_width();
+	// int label_height = label->get_content_height();
+	// int label_line_count = label->get_line_count();
+	// int label_line_height =  label_height / label_line_count;
+
+	String description;
+	if (!symbol_hint.description.is_empty()) {
+		_push_newline();
+		description = symbol_hint.description.strip_edges();
+		text_active_line += description.count("\n");
+		Color description_color = EDITOR_GET("text_editor/hints/hover/description_default_color");
+		label->push_color(description_color);
+		label->append_text(description);
+		label->pop();
+	}
+
+	text_max_active_line_width = MAX(text_max_active_line_width, text_active_line_width);
+
+	Ref<Font> label_font = label->get_theme_font(SNAME("normal_font"));
+	int label_font_size = label->get_theme_font_size(SNAME("normal_font_size"));
+	int label_separation = label->get_theme_constant(SNAME("line_separation"));
+	Ref<StyleBox> label_style = label->get_theme_stylebox(SNAME("normal"));
+	int label_height = label_font->get_height(label_font_size);
+	int label_top = label_font->get_spacing(TextServer::SPACING_TOP);
+	int label_bottom = label_font->get_spacing(TextServer::SPACING_BOTTOM);
+	Size2i window_max_size = EditorSettings::get_singleton()->get("text_editor/hints/hover/max_size");
+
+	Size2 label_size = label_font->get_string_size(longest_line, HORIZONTAL_ALIGNMENT_LEFT, window_max_size.x - label_style->get_minimum_size().x, label_font_size);
+	Size2 desc_size = label_font->get_multiline_string_size(description, HORIZONTAL_ALIGNMENT_LEFT, window_max_size.x - label_style->get_minimum_size().x, label_font_size);
+
+	// int label_line_count = MIN(hint_max_lines, text_active_line);
+	// label->set_custom_minimum_size(Size2((string_size.x) * 1.2,  label_line_count * /*label_text_height*/ string_size.y /*label_height * label_line_height*/));
+	label->set_custom_minimum_size(Size2(MAX(label_size.x, desc_size.x), 0));
+	reset_size();
+	// set_block_minimum_size_adjust(false);
+}
+
+// void SymbolHintHelpBit::_deferred_update() {
+// 	RichTextLabel *label = get_rich_text();
+
+// 	int hint_max_lines = EDITOR_GET("text_editor/hints/hover/max_hint_lines");
+
+// 	int label_width = label->get_content_width();
+// 	int label_height = label->get_content_height();
+// 	int label_line_count = label->get_line_count();
+// 	int label_line_height =  label_height / label_line_count;
+
+// 	if (!symbol_hint.description.is_empty()) {
+// 		_push_newline();
+// 		String descript = symbol_hint.description.strip_edges();
+// 		text_active_line += descript.count("\n");
+// 		Color description_color = EDITOR_GET("text_editor/hints/hover/description_default_color");
+// 		label->push_color(description_color);
+// 		label->append_text(descript);
+// 		label->pop();
+// 	}
+
+// 	text_max_active_line_width = MAX(text_max_active_line_width, text_active_line_width);
+
+// 	// Ref<Font> label_font = label->get_theme_font(SNAME("normal_font"));
+// 	// int label_font_size = label->get_theme_font_size(SNAME("normal_font_size"));
+// 	// int label_separation = label->get_theme_constant(SNAME("line_separation"));
+// 	// Ref<StyleBox> label_style = label->get_theme_stylebox(SNAME("normal"));
+
+// 	// Size2 string_size = label_font->get_string_size(longest_line, HORIZONTAL_ALIGNMENT_LEFT, -1, label_font_size);
+
+// 	label_height = text_active_line > hint_max_lines ? hint_max_lines : text_active_line;
+// 	label->set_custom_minimum_size(Size2( label_width /*string_size.x * 2*/, label_height * label_line_height));
+// 	reset_size();
+// 	set_block_minimum_size_adjust(false);
+
+// 	// longest_line.clear();
+// 	// current_line.clear();
+// }
+
+SymbolHintHelpBit::SymbolHintHelpBit() {
+	rich_text = memnew(RichTextLabel);
+	add_child(rich_text);
+	rich_text->connect("meta_clicked", callable_mp(this, &SymbolHintHelpBit::_meta_clicked));
+	rich_text->set_override_selected_font_color(false);
+	rich_text->set_fit_content_height(true);
+	rich_text->set_shortcut_keys_enabled(false);
+	rich_text->set_tab_size(0);
+	rich_text->set_use_bbcode(true);
+	rich_text->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	// rich_text->connect(SNAME("finished"), callable_mp(this, &SymbolHintHelpBit::_deferred_update));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 Vector<String> ScriptTextEditor::get_functions() {
 	CodeEdit *te = code_editor->get_text_editor();
 	String text = te->get_text();
@@ -313,6 +653,8 @@ bool ScriptTextEditor::show_members_overview() {
 }
 
 void ScriptTextEditor::update_settings() {
+	symbol_hint_popup->set_max_size(EditorSettings::get_singleton()->get("text_editor/hints/hover/max_size"));
+	
 	code_editor->get_text_editor()->set_gutter_draw(connection_gutter, EditorSettings::get_singleton()->get("text_editor/appearance/gutters/show_info_gutter"));
 	code_editor->update_editor_settings();
 }
@@ -917,7 +1259,9 @@ void ScriptTextEditor::_lookup_symbol(const String &p_symbol, int p_row, int p_c
 	}
 }
 
-void ScriptTextEditor::_validate_symbol(const String &p_symbol, bool p_lookup) {
+void ScriptTextEditor::_validate_symbol(const String &p_symbol) {
+	_hide_symbol_hint();
+
 	CodeEdit *text_edit = code_editor->get_text_editor();
 
 	Node *base = get_tree()->get_edited_scene_root();
@@ -927,18 +1271,8 @@ void ScriptTextEditor::_validate_symbol(const String &p_symbol, bool p_lookup) {
 
 	ScriptLanguage::LookupResult result;
 	result.hint.symbol = p_symbol;
-	if (ScriptServer::is_global_class(p_symbol)) {
+	if (ScriptServer::is_global_class(p_symbol) || p_symbol.is_resource_file() || script->get_language()->lookup_code(code_editor->get_text_editor()->get_text_for_symbol_lookup(), p_symbol, script->get_path(), base, result) == OK || (ProjectSettings::get_singleton()->has_autoload(p_symbol) && ProjectSettings::get_singleton()->get_autoload(p_symbol).is_singleton)) {
 		text_edit->set_symbol_lookup_word_as_valid(true);
-		result.hint.type = ScriptLanguage::SymbolHint::SYMBOL_CLASS;
-		// TODO: Description.
-	} else if (p_symbol.is_resource_file()) {
-		text_edit->set_symbol_lookup_word_as_valid(true);
-	} else if (script->get_language()->lookup_code(code_editor->get_text_editor()->get_text_for_symbol_lookup(), p_symbol, script->get_path(), base, result) == OK) {
-		text_edit->set_symbol_lookup_word_as_valid(true);
-	} else if ((ProjectSettings::get_singleton()->has_autoload(p_symbol) && ProjectSettings::get_singleton()->get_autoload(p_symbol).is_singleton)) {
-		text_edit->set_symbol_lookup_word_as_valid(true);
-		result.hint.type = ScriptLanguage::SymbolHint::SYMBOL_PROPERTY;
-		result.hint.datatype = "Resource";
 	} else if (p_symbol.is_relative_path()) {
 		String path = _get_absolute_path(p_symbol);
 		if (FileAccess::exists(path)) {
@@ -949,10 +1283,100 @@ void ScriptTextEditor::_validate_symbol(const String &p_symbol, bool p_lookup) {
 	} else {
 		text_edit->set_symbol_lookup_word_as_valid(false);
 	}
+}
 
-	if (!p_lookup) {
-		text_edit->set_hovered_hint(result.hint);
+void ScriptTextEditor::_hovered_symbol(const String &p_symbol, Point2i m_local_mpos) {
+	if (!EDITOR_GET("text_editor/hints/hover/enabled")) {
+		if (symbol_hint_popup->is_visible()) {
+			_hide_symbol_hint();
+		}
+		return;
 	}
+
+	if (p_symbol.is_empty()) {
+		_hide_symbol_hint();
+		return;
+	}
+
+	Node *base = get_tree()->get_edited_scene_root();
+	if (base) {
+		base = _find_node_for_script(base, base, script);
+	}
+
+	ScriptLanguage::LookupResult result;
+	result.hint.symbol = p_symbol;
+	if (ScriptServer::is_global_class(p_symbol)) {
+		result.hint.type = ScriptLanguage::SymbolHint::SYMBOL_CLASS;
+		result.hint.description = "In " + ScriptServer::get_global_class_path(p_symbol);
+		// TODO: Description.
+	} else if (script->get_language()->lookup_code(code_editor->get_text_editor()->get_text_for_symbol_lookup(), p_symbol, script->get_path(), base, result) != OK) {
+		_hide_symbol_hint();
+		return;
+	}
+
+	if ((ProjectSettings::get_singleton()->has_autoload(p_symbol) && ProjectSettings::get_singleton()->get_autoload(p_symbol).is_singleton)) {
+		result.hint.type = ScriptLanguage::SymbolHint::SYMBOL_PROPERTY;
+		result.hint.datatype = "Resource";
+	}
+
+	Vector2i new_symbol_hint_column_line = code_editor->get_text_editor()->get_word_line_column_at_pos(m_local_mpos);
+
+	if (symbol_hint_column_line == new_symbol_hint_column_line && result.hint.symbol == symbol_hint_help_bit->get_symbol_hint().symbol) {
+		return;
+	}
+
+	symbol_hint_column_line = new_symbol_hint_column_line;
+
+	if (result.hint.type == ScriptLanguage::SymbolHint::SYMBOL_UNKNOWN) {
+		_hide_symbol_hint();
+		return;
+	}
+
+	// symbol_hint_mouse_position = m_local_mpos;
+	symbol_hint = result.hint;
+
+	symbol_hint_timer = get_tree()->create_timer(EDITOR_GET("text_editor/hints/hover/hover_delay"));
+	symbol_hint_timer->set_ignore_time_scale(true);
+	symbol_hint_timer->connect("timeout", callable_mp(this, &ScriptTextEditor::_show_symbol_hint).bind(m_local_mpos));
+}
+
+void ScriptTextEditor::_show_symbol_hint(Vector2i m_local_mpos) {
+	symbol_hint_help_bit->set_symbol_hint(symbol_hint);
+
+	CodeEdit *text_edit = code_editor->get_text_editor();
+
+	symbol_hint_popup->reset_size();
+
+	// symbol_hint_popup_position.x is the symbol's first column
+	// calculated to align the left of the hint with the first column
+	// symbol_hint_popup_position.y is the symbol's line - 1
+	// calculated to align the bottom of the hint with the previous line.
+	Point2 symbol_hint_popup_position = text_edit->get_word_line_column_at_pos(m_local_mpos);
+	symbol_hint_popup_position.x = text_edit->get_pos_at_line_column(symbol_hint_popup_position.y, symbol_hint_popup_position.x).x;
+	symbol_hint_popup_position.y *= text_edit->get_line_height();
+	symbol_hint_popup_position = get_screen_transform().xform(symbol_hint_popup_position);
+	symbol_hint_popup_position.y -= symbol_hint_popup->get_size().y + text_edit->get_theme_constant(SNAME("line_separation"));
+
+	symbol_hint_popup->set_current_screen(symbol_hint_popup->get_parent_visible_window()->get_current_screen());
+	symbol_hint_popup->set_position(symbol_hint_popup_position);
+	symbol_hint_popup->show();
+
+	if (symbol_hint_timer.is_valid()) {
+		symbol_hint_timer->release_connections();
+		symbol_hint_timer = Ref<SceneTreeTimer>();
+	}
+}
+
+void ScriptTextEditor::_hide_symbol_hint() {
+	if (!symbol_hint_popup->is_visible()) {
+		return;
+	}
+	if (symbol_hint_timer.is_valid()) {
+		symbol_hint_timer->release_connections();
+		symbol_hint_timer = Ref<SceneTreeTimer>();
+	}
+	symbol_hint_popup->hide();
+	symbol_hint_help_bit->set_symbol_hint(ScriptLanguage::SymbolHint());
 }
 
 String ScriptTextEditor::_get_absolute_path(const String &rel_path) {
@@ -1847,8 +2271,8 @@ void ScriptTextEditor::_enable_code_editor() {
 	code_editor->connect("validate_script", callable_mp(this, &ScriptTextEditor::_validate_script));
 	code_editor->connect("load_theme_settings", callable_mp(this, &ScriptTextEditor::_load_theme_settings));
 	code_editor->get_text_editor()->connect("symbol_lookup", callable_mp(this, &ScriptTextEditor::_lookup_symbol));
-	code_editor->get_text_editor()->connect("symbol_validate", callable_mp(this, &ScriptTextEditor::_validate_symbol).bind(true));
-	code_editor->get_text_editor()->connect("hovered_symbol_validate", callable_mp(this, &ScriptTextEditor::_validate_symbol).bind(false));
+	code_editor->get_text_editor()->connect("symbol_validate", callable_mp(this, &ScriptTextEditor::_validate_symbol));
+	code_editor->get_text_editor()->connect("symbol_hovered", callable_mp(this, &ScriptTextEditor::_hovered_symbol));
 	code_editor->get_text_editor()->connect("gutter_added", callable_mp(this, &ScriptTextEditor::_update_gutter_indexes));
 	code_editor->get_text_editor()->connect("gutter_removed", callable_mp(this, &ScriptTextEditor::_update_gutter_indexes));
 	code_editor->get_text_editor()->connect("gutter_clicked", callable_mp(this, &ScriptTextEditor::_gutter_clicked));
@@ -1965,6 +2389,13 @@ void ScriptTextEditor::_enable_code_editor() {
 	breakpoints_menu->connect("index_pressed", callable_mp(this, &ScriptTextEditor::_breakpoint_item_pressed));
 
 	goto_menu->get_popup()->connect("id_pressed", callable_mp(this, &ScriptTextEditor::_edit_option));
+
+	add_child(symbol_hint_popup);
+
+	symbol_hint_help_bit = memnew(SymbolHintHelpBit);
+	symbol_hint_help_bit->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	symbol_hint_help_bit->connect(SNAME("request_hide"), callable_mp(this, &ScriptTextEditor::_hide_symbol_hint));
+	symbol_hint_popup->add_child(symbol_hint_help_bit);
 }
 
 ScriptTextEditor::ScriptTextEditor() {
@@ -2000,6 +2431,15 @@ ScriptTextEditor::ScriptTextEditor() {
 	errors_panel->set_selection_enabled(true);
 	errors_panel->set_focus_mode(FOCUS_CLICK);
 	errors_panel->hide();
+
+	symbol_hint_popup = memnew(PopupPanel);
+	symbol_hint_popup->set_theme_type_variation(SNAME("TooltipPanel"));
+	symbol_hint_popup->set_transient(true);
+	symbol_hint_popup->set_flag(Window::FLAG_NO_FOCUS, true);
+	symbol_hint_popup->set_flag(Window::FLAG_POPUP, false);
+	symbol_hint_popup->set_wrap_controls(true);
+	symbol_hint_popup->set_max_size(Size2i(300, 500) * EDSCALE);
+	symbol_hint_popup->set_min_size(Size2i(80, 100) * EDSCALE);
 
 	update_settings();
 
@@ -2073,6 +2513,7 @@ ScriptTextEditor::~ScriptTextEditor() {
 		memdelete(bookmarks_menu);
 		memdelete(breakpoints_menu);
 		memdelete(connection_info_dialog);
+		memdelete(symbol_hint_popup);
 	}
 }
 
