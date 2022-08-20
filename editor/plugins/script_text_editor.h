@@ -58,17 +58,8 @@ class SymbolHintHelpBit : public MarginContainer {
 	void _meta_clicked(String p_select);
 
 	void _push_text(const String &p_text, bool p_pop = true);
-	void _push_newline();
-	void _reset();
-
-	void _deferred_update();
 
 	ScriptLanguage::SymbolHint symbol_hint;
-	String longest_line;
-	String current_line;
-	int text_active_line_width = 0;
-	int text_active_line = 1;
-	int text_max_active_line_width = 0;
 
 protected:
 	static void _bind_methods();
@@ -79,6 +70,8 @@ public:
 
 	void set_symbol_hint(const ScriptLanguage::SymbolHint &p_symbol_hint);
 	ScriptLanguage::SymbolHint get_symbol_hint() const { return symbol_hint; }
+
+	virtual Size2 get_minimum_size() const override;
 
 	SymbolHintHelpBit();
 };
@@ -228,9 +221,9 @@ protected:
 	void _goto_line(int p_line) { goto_line(p_line); }
 	void _lookup_symbol(const String &p_symbol, int p_row, int p_column);
 	void _validate_symbol(const String &p_symbol);
-	void _hovered_symbol(const String &p_symbol, Point2i p_local_mpos);
+	void _hovered_symbol(const String &p_symbol, Point2i p_column_line);
 
-	void _show_symbol_hint(Vector2i m_local_mpos);
+	void _show_symbol_hint();
 	void _hide_symbol_hint();
 
 	void _convert_case(CodeTextEditor::CaseStyle p_case);

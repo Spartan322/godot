@@ -378,7 +378,7 @@ void CodeEdit::gui_input(const Ref<InputEvent> &p_gui_input) {
 						emit_signal(SNAME("symbol_validate"), symbol_lookup_new_word);
 					}
 				} else {
-					emit_signal("symbol_hovered", symbol_lookup_new_word, mpos);
+					emit_signal("symbol_hovered", symbol_lookup_new_word, get_word_line_column_at_pos(mpos));
 				}
 			} else {
 				set_symbol_lookup_word_as_valid(false);
@@ -2328,7 +2328,7 @@ void CodeEdit::_bind_methods() {
 	/* Symbol lookup */
 	ADD_SIGNAL(MethodInfo("symbol_lookup", PropertyInfo(Variant::STRING, "symbol"), PropertyInfo(Variant::INT, "line"), PropertyInfo(Variant::INT, "column")));
 	ADD_SIGNAL(MethodInfo("symbol_validate", PropertyInfo(Variant::STRING, "symbol")));
-	ADD_SIGNAL(MethodInfo("symbol_hovered", PropertyInfo(Variant::STRING, "symbol"), PropertyInfo(Variant::VECTOR2I, "local_mouse_position")));
+	ADD_SIGNAL(MethodInfo("symbol_hovered", PropertyInfo(Variant::STRING, "symbol"), PropertyInfo(Variant::VECTOR2I, "symbol_column_line")));
 }
 
 /* Auto brace completion */

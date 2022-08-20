@@ -3771,12 +3771,17 @@ String TextEdit::get_word_at_pos(const Vector2 &p_pos) const {
 }
 
 Point2i TextEdit::get_word_line_column_at_pos(const Vector2 &p_pos) const {
-	Point2i pos = get_line_column_at_pos(p_pos);
+	Point2i pos = get_line_column_at_pos(p_pos, false);
+
+	if(pos.y == -1) {
+		return pos;
+	}
+
 	int row = pos.y;
 	int col = pos.x;
 
 	String s = text[row];
-	if (s.length() == 0) {
+	if (s.length() == 0 || col >= s.length()) {
 		return Point2i(-1, -1);
 	}
 	int beg, end;
