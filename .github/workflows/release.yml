@@ -2,6 +2,13 @@ name: Build Redot Project
 
 on:
   workflow_dispatch:
+    inputs:
+      prerelease:
+        type: boolean
+        required: true
+        description: Whether the release build is a prerelease
+env:
+  BUILD_NAME: official
 
 jobs:
   build-linux:
@@ -290,9 +297,45 @@ jobs:
           name: redot-macos-arm64-template
           path: redot-macos-arm64-template
 
-      - name: Get the current date
-        id: date
-        run: echo "CURRENT_DATE=$(date +'%Y%m%d%H')" >> $GITHUB_ENV
+      - name: Retrieve versioning
+        run: |
+            #!/bin/bash
+
+            python_script='
+            import sys
+            d = {}                                 # create a dict to store values in
+            exec(open(sys.argv[1], "r").read(), d) # exec code with that dict as namespace
+            for k in sys.argv[2:]:
+                print("%s\0" % str(d[k]).split("\0")[0]) # extract values
+            '
+
+            read_python_vars() {
+                local python_file=$1; shift
+                local varname
+                for varname; do
+                    IFS= read -r -d '' "${varname#*:}"
+                done < <(python -c "$python_script" "$python_file" "${@%%:*}")
+            }
+
+            read_python_vars version.py major:v_major minor:v_minor patch:v_patch status:v_status status_version:v_status_version
+            v_major=$(echo $v_major|tr -d '\n')
+            v_minor=$(echo $v_minor|tr -d '\n')
+            if [ $v_patch = 0 ]; then
+                v_patch=""
+            else
+                v_patch=$(echo $v_patch|tr -d '\n')
+                v_patch=".$v_patch"
+            fi
+            if [ $v_status = "stable" ]; then
+                v_status="-stable"
+                v_status_version=""
+            else
+                v_status=$(echo $v_status|tr -d '\n')
+                v_status="-$v_status"
+                v_status_version=$(echo $v_status_version|tr -d '\n')
+                v_status_version=".$v_status_version"
+            fi
+            echo "CURRENT_VERSION=$v_major.$v_minor$v_patch$v_status$v_status_version" >> $GITHUB_ENV
 
       - name: Zip the dev artifact
         run: |
@@ -305,26 +348,13 @@ jobs:
           zip -r redot-macos-x64-template.zip redot-macos-x64-template/*
           zip -r redot-macos-arm64-template.zip redot-macos-arm64-template/*
 
-      # - name: Upload release artifacts
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: redot-release-${{ env.CURRENT_DATE }}
-      #     path: |
-      #       redot-linuxbsd.zip
-      #       redot-windowsx64.zip
-      #       redot-macos-x64.zip
-      #       redot-macos-arm64.zip
-      #       redot-linux-template.zip
-      #       redot-windows-template.zip
-      #       redot-macos-x64-template.zip
-      #       redot-macos-arm64-template.zip
-
       - name: Upload dev build artifacts to GitHub dev
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.CURRENT_DATE }}
-          name: Build ${{ env.CURRENT_DATE }}
+          tag_name: ${{ env.CURRENT_VERSION }}
+          name: v${{ env.CURRENT_VERSION }}
           draft: false
+          prerelease: {{ inputs.prerelease }}
           make_latest: true
           files: |
             redot-linuxbsd.zip
